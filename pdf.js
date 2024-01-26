@@ -3,7 +3,7 @@ const { exec } = require("child_process");
 module.exports = {
   mergePdf: function (array) {
     let list = "";
-    const mergePdfName = `${Date.now()}.pdf`;
+    const mergePdfName = `Merged-${Date.now()}.pdf`;
     array.map(({ givenName }) => {
       list += `./pdf/${givenName} `;
     });

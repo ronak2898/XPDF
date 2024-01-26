@@ -39,7 +39,11 @@ function getListOfUploadPDF(array) {
 
 function deletePDFs(files) {
   files.map(({ givenName }) => {
-    fs.unlinkSync(`./pdf/${givenName}`);
+    fs.unlink(`./pdf/${givenName}`, (err) => {
+      if (err) {
+        console.log("deletePDFs err: ", err);
+      }
+    });
   });
 }
 
@@ -112,19 +116,23 @@ bot.on("message", async (msg) => {
   if (text === "Done") {
     const getUserData = getCache(id);
     if (getUserData) {
+      deleteCache(id);
       const { action, files } = getUserData;
       if (action === "/merge") {
         const { success, message } = await mergePdf(files);
-        opts.caption = "Here is your merge PDF";
-        opts.reply_markup = { remove_keyboard: true, is_persistent: true };
+        opts.reply_markup = { remove_keyboard: true };
         if (success) {
-          await bot.sendDocument(id, message, opts);
-          fs.unlinkSync(message);
+          bot.sendMessage(id, "🔄 Merging your PDF files.....");
+          bot.sendChatAction(id, "upload_document");
+          setTimeout(async () => {
+            opts.caption = "Here is your merge PDF";
+            await bot.sendDocument(id, message, opts);
+            fs.unlinkSync(message);
+          }, 3000);
         } else {
           replayMsg = message;
         }
         deletePDFs(files);
-        deleteCache(id);
       }
     }
   }

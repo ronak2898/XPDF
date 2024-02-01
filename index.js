@@ -1,10 +1,13 @@
 const express = require("express");
 const app = express();
-const port = 3000;
 const TelegramBot = require("node-telegram-bot-api");
-const token = "6545905698:AAFvwJaMe9dpO77Z09PwgGjy5QxNyhauqik";
 const fs = require("fs");
-const bot = new TelegramBot(token, { polling: true });
+
+const {
+  parsed: { TELEGRAM_ACCESS_TOKEN, PORT },
+} = require("dotenv").config();
+const bot = new TelegramBot(TELEGRAM_ACCESS_TOKEN, { polling: true });
+
 const {
   setCache,
   getCache,
@@ -47,11 +50,10 @@ function deletePDFs(files) {
   });
 }
 
-bot.on("message", async (msg) => {
+bot.on("text", async (msg) => {
   const {
     chat: { id },
     text,
-    document,
     message_id,
   } = msg;
   let replayMsg = "";
@@ -137,42 +139,44 @@ bot.on("message", async (msg) => {
     }
   }
   replayMsg ? bot.sendMessage(id, replayMsg, opts) : false;
+});
 
-  if (document) {
-    const getUserData = getCache(id);
-    if (getUserData) {
-      const { mime_type } = document;
-      if (mime_type === "application/pdf") {
-        const { file_id, file_name } = document;
-        const givenName = `${Date.now()}.pdf`;
-        await downloadPDF(file_id, givenName);
-        const fileObj = { originalName: file_name, givenName };
-        const opts = {
-          reply_to_message_id: message_id,
-          reply_markup: {
-            resize_keyboard: true,
-            is_persistent: true,
-            // one_time_keyboard: true,
-            keyboard: [["Cancel"]],
-          },
-        };
-        if (getUserData.files) {
-          getUserData.files.push(fileObj);
-          opts.reply_markup.keyboard = [
-            ["Done"],
-            ["Remove Last PDF", "Cancel"],
-          ];
-        } else {
-          getUserData.files = [fileObj];
-        }
-        setCache(id, getUserData);
-        bot.sendMessage(id, getListOfUploadPDF(getUserData.files), opts);
+bot.on("document", async (msg) => {
+  const {
+    chat: { id },
+    document,
+    message_id,
+  } = msg;
+  const getUserData = getCache(id);
+  if (getUserData) {
+    const { mime_type } = document;
+    if (mime_type === "application/pdf") {
+      const { file_id, file_name } = document;
+      const givenName = `${Date.now()}.pdf`;
+      await downloadPDF(file_id, givenName);
+      const fileObj = { originalName: file_name, givenName };
+      const opts = {
+        reply_to_message_id: message_id,
+        reply_markup: {
+          resize_keyboard: true,
+          is_persistent: true,
+          // one_time_keyboard: true,
+          keyboard: [["Cancel"]],
+        },
+      };
+      if (getUserData.files) {
+        getUserData.files.push(fileObj);
+        opts.reply_markup.keyboard = [["Done"], ["Remove Last PDF", "Cancel"]];
       } else {
-        bot.sendMessage(id, "Invalid File Type!");
+        getUserData.files = [fileObj];
       }
+      setCache(id, getUserData);
+      bot.sendMessage(id, getListOfUploadPDF(getUserData.files), opts);
+    } else {
+      bot.sendMessage(id, "Invalid File Type!");
     }
   }
 });
 
 flushAllCache();
-app.listen(port);
+app.listen(PORT);

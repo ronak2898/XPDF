@@ -14,8 +14,8 @@ const {
   deleteCache,
   flushAllCache,
 } = require("./node-cache");
-const { mergePdf } = require("./pdf");
-process.env.NTBA_FIX_350 = true; // to remove deprecationWarning of bot.sendDocument
+const { getMergePdf, getTotalPages, keyboardLogin } = require("./pdf");
+process.env.NTBA_FIX_350 = true; // to remove deprecationWarning on bot.sendDocument
 
 async function downloadPDF(file_id, givenName) {
   return new Promise((resolve) => {
@@ -83,7 +83,7 @@ bot.on("text", async (msg) => {
     if (getUserData) {
       deletePDFs(getUserData.files || []);
       deleteCache(id);
-      replayMsg = "/merge Action cancelled";
+      replayMsg = `${getUserData.action} Action cancelled`;
       opts.reply_markup = { remove_keyboard: true };
     }
   }
@@ -119,9 +119,9 @@ bot.on("text", async (msg) => {
     const getUserData = getCache(id);
     if (getUserData) {
       deleteCache(id);
-      const { action, files } = getUserData;
+      const { action, files, removedPages } = getUserData;
       if (action === "/merge") {
-        const { success, message } = await mergePdf(files);
+        const { success, message } = await getMergePdf(files);
         opts.reply_markup = { remove_keyboard: true };
         if (success) {
           bot.sendMessage(id, "🔄 Merging your PDF files.....");
@@ -135,8 +135,14 @@ bot.on("text", async (msg) => {
           replayMsg = message;
         }
         deletePDFs(files);
+      } else if (action === "/removepages") {
       }
     }
+  }
+  if (text === "/removepages") {
+    setCache(id, { action: text });
+    replayMsg = `Send me the PDF file that you'll like to remove pages`;
+    opts.reply_markup = { remove_keyboard: true };
   }
   replayMsg ? bot.sendMessage(id, replayMsg, opts) : false;
 });
@@ -151,6 +157,7 @@ bot.on("document", async (msg) => {
   if (getUserData) {
     const { mime_type } = document;
     if (mime_type === "application/pdf") {
+      const { action } = getUserData;
       const { file_id, file_name } = document;
       const givenName = `${Date.now()}.pdf`;
       await downloadPDF(file_id, givenName);
@@ -164,17 +171,66 @@ bot.on("document", async (msg) => {
           keyboard: [["Cancel"]],
         },
       };
-      if (getUserData.files) {
-        getUserData.files.push(fileObj);
-        opts.reply_markup.keyboard = [["Done"], ["Remove Last PDF", "Cancel"]];
-      } else {
-        getUserData.files = [fileObj];
+      if (action === "/merge") {
+        if (getUserData.files) {
+          getUserData.files.push(fileObj);
+          opts.reply_markup.keyboard = [
+            ["Done"],
+            ["Remove Last PDF", "Cancel"],
+          ];
+        } else {
+          getUserData.files = [fileObj];
+        }
+        setCache(id, getUserData);
+        bot.sendMessage(id, getListOfUploadPDF(getUserData.files), opts);
+      } else if (action === "/removepages") {
+        const totalPages = await getTotalPages(givenName);
+        let text = "";
+        if (totalPages > 1) {
+          getUserData.files = [fileObj];
+          getUserData.totalPages = totalPages;
+          getUserData.removedPages = [];
+          setCache(id, getUserData);
+          text = getListOfUploadPDF(getUserData.files);
+          text += `\n\nThere are total ${totalPages} pages in PDF.\nNow send me the number to remove page.`;
+          opts.reply_markup.keyboard = keyboardLogin(totalPages);
+        } else {
+          text = "There is only 1 page /removepages action could not perform.";
+          opts.reply_markup = { remove_keyboard: true };
+          deleteCache(id);
+          deletePDFs([fileObj]);
+        }
+        bot.sendMessage(id, text, opts);
       }
-      setCache(id, getUserData);
-      bot.sendMessage(id, getListOfUploadPDF(getUserData.files), opts);
     } else {
       bot.sendMessage(id, "Invalid File Type!");
     }
+  }
+});
+
+bot.onText(/^[0-9]*$/, (msg, match) => {
+  const {
+    chat: { id },
+    message_id,
+  } = msg;
+  const getUserData = getCache(id);
+  let { action, totalPages, removedPages } = getUserData;
+  if (action === "/removepages") {
+    let removedPagesNumber = match[0];
+    removedPages.push(removedPagesNumber.toString());
+    getUserData.totalPages = --totalPages;
+    getUserData.removedPages = removedPages;
+    console.log(getUserData);
+    setCache(id, getUserData);
+    const text = `Press Done or keep sending number of the page.\n\nRemoved Pages Number : ${removedPages.toString()}`;
+    bot.sendMessage(id, text, {
+      reply_markup: {
+        reply_to_message_id: message_id,
+        resize_keyboard: true,
+        is_persistent: true,
+        keyboard: keyboardLogin(totalPages, removedPages),
+      },
+    });
   }
 });
 

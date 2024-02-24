@@ -14,7 +14,12 @@ const {
   deleteCache,
   flushAllCache,
 } = require("./node-cache");
-const { getMergePdf, getTotalPages, keyboardLogin } = require("./pdf");
+const {
+  getMergePdf,
+  getTotalPages,
+  keyboardLogin,
+  removePages,
+} = require("./pdf");
 process.env.NTBA_FIX_350 = true; // to remove deprecationWarning on bot.sendDocument
 
 async function downloadPDF(file_id, givenName) {
@@ -119,7 +124,7 @@ bot.on("text", async (msg) => {
     const getUserData = getCache(id);
     if (getUserData) {
       deleteCache(id);
-      const { action, files, removedPages } = getUserData;
+      const { action, files, removedPages, totalPages } = getUserData;
       if (action === "/merge") {
         const { success, message } = await getMergePdf(files);
         opts.reply_markup = { remove_keyboard: true };
@@ -136,6 +141,24 @@ bot.on("text", async (msg) => {
         }
         deletePDFs(files);
       } else if (action === "/removepages") {
+        const { success, message } = await removePages(
+          files,
+          totalPages,
+          removedPages
+        );
+        opts.reply_markup = { remove_keyboard: true };
+        if (success) {
+          bot.sendMessage(id, "🔄 Processing your PDF files.....");
+          bot.sendChatAction(id, "upload_document");
+          setTimeout(async () => {
+            opts.caption = "Here is your PDF";
+            await bot.sendDocument(id, message, opts);
+            fs.unlinkSync(message);
+          }, 3000);
+        } else {
+          replayMsg = message;
+        }
+        deletePDFs(files);
       }
     }
   }
@@ -218,7 +241,6 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
   if (action === "/removepages") {
     let removedPagesNumber = match[0];
     removedPages.push(removedPagesNumber.toString());
-    getUserData.totalPages = --totalPages;
     getUserData.removedPages = removedPages;
     console.log(getUserData);
     setCache(id, getUserData);

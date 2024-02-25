@@ -2,7 +2,7 @@
 const { exec } = require("child_process");
 const pdfPageCounter = require("pdf-page-counter");
 const fs = require("fs");
-// const { range } = require("lodash");
+const { getCache, deleteCache } = require("./node-cache");
 
 module.exports = {
   getMergePdf: async function (array) {
@@ -32,10 +32,13 @@ module.exports = {
     });
   },
 
-  keyboardLogin: function (totalPages, removedPages = []) {
+  pdfPageKeyboard: function (totalPages, removedPages = []) {
     let keyboardArray = [];
     let tmp = [];
     let n = 1;
+    // if (totalPages === removedPages.length) {
+    //   removedPages = [];
+    // }
     while (totalPages) {
       if (n % 5) {
         tmp.push(n.toString());
@@ -103,5 +106,25 @@ module.exports = {
         }
       );
     });
+  },
+
+  deleteOldDataOnNewCommand: function (id) {
+    const getUserData = getCache(id);
+    if (getUserData) {
+      module.exports.deletePDFs(getUserData.files || []);
+      deleteCache(id);
+    }
+    return true;
+  },
+
+  deletePDFs: function (files) {
+    files.map(({ givenName }) => {
+      fs.unlink(`./pdf/${givenName}`, (err) => {
+        if (err) {
+          console.log("deletePDFs err: ", err);
+        }
+      });
+    });
+    return true;
   },
 };

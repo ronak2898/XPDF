@@ -20,7 +20,7 @@ const {
   pdfPageKeyboard,
   removePages,
   deleteOldDataOnNewCommand,
-  deletePDFs
+  deletePDFs,
 } = require("./pdf");
 process.env.NTBA_FIX_350 = true; // to remove deprecationWarning on bot.sendDocument
 
@@ -63,7 +63,7 @@ bot.on("text", async (msg) => {
     replayMsg = `Welcome to XPDF Bot!\n\nKey features:\n- Compress, merge, remove pages, split and add watermark to PDF files\n- And more...`;
   }
   if (text === "/merge") {
-    deleteOldDataOnNewCommand(id)
+    deleteOldDataOnNewCommand(id);
     setCache(id, { action: text });
     replayMsg =
       "Send me the PDF files that you'll like to merge\n\nNote that the files will be merged in the order that you send me";
@@ -154,12 +154,16 @@ bot.on("text", async (msg) => {
     }
   }
   if (text === "/removepages") {
-    deleteOldDataOnNewCommand(id)
+    deleteOldDataOnNewCommand(id);
     setCache(id, { action: text });
     replayMsg = `Send me the PDF file that you'll like to remove pages`;
-    opts.reply_markup = { remove_keyboard: true };
+    opts.reply_markup = {
+      resize_keyboard: true,
+      is_persistent: true,
+      keyboard: [["Cancel"]],
+    };
   }
-  bot.sendMessage(id, replayMsg ? replayMsg : "Invalid Command", opts);
+  replayMsg ? bot.sendMessage(id, replayMsg, opts) : false;
 });
 
 bot.on("document", async (msg) => {
@@ -252,5 +256,11 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
   }
 });
 
+const readAllFiles = fs.readdirSync("./pdf");
+readAllFiles.forEach((file) => {
+  if (file.endsWith(".pdf")) {
+    fs.unlinkSync(`./pdf/${file}`);
+  }
+});
 flushAllCache();
 app.listen(PORT);

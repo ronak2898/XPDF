@@ -42,6 +42,9 @@ module.exports = {
     while (totalPages) {
       if (n % 5) {
         tmp.push(n.toString());
+        tmp = tmp.filter((i) => {
+          return removedPages.includes(i) ? "" : i;
+        });
       } else {
         tmp.push(n.toString());
         keyboardArray.push(

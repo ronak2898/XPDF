@@ -64,6 +64,32 @@ module.exports = {
     return keyboardArray;
   },
 
+  pdfPageSplitKeyboard: function (totalPages, removedPages) {
+    let keyboardArray = [];
+    let tmp = [];
+    let n = 1;
+    while (totalPages) {
+      if (n % 5) {
+        if (n >= removedPages) {
+          tmp.push(n.toString());
+        }
+      } else {
+        if (n >= removedPages) {
+          tmp.push(n.toString());
+          keyboardArray.push(tmp);
+        }
+        tmp = [];
+      }
+      n++;
+      totalPages--;
+    }
+    if (tmp.length) {
+      keyboardArray.push(tmp);
+    }
+    keyboardArray.push(["Cancel"]);
+    return keyboardArray;
+  },
+
   removePages: function (array, total, removedPages) {
     const [{ givenName, originalName }] = array;
     const removedPagePdfName = `RemovedPages-${Date.now()}.pdf`;
@@ -129,5 +155,28 @@ module.exports = {
       });
     });
     return true;
+  },
+
+  getSplitPdf: async function (array, ranges) {
+    const [{ givenName, originalName }] = array;
+    const removedPagePdfName = `SplitPdf-${Date.now()}.pdf`;
+    let text = "";
+    const len = ranges.length;
+    ranges.forEach((a, index) => {
+      const [f, l] = a;
+      text += `pdftk ./pdf/${givenName} cat ${f}-${l? l : f} output ./pdf/${removedPagePdfName}`;
+      if (len !== ++index) {
+        text += ` && `;
+      }
+    });
+    return new Promise((resolve) => {
+      exec(text, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ success: false, message: err.message });
+        } else {
+          resolve({ success: true, message: `./pdf/${removedPagePdfName}` });
+        }
+      });
+    });
   },
 };

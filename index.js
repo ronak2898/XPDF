@@ -21,6 +21,8 @@ const {
   removePages,
   deleteOldDataOnNewCommand,
   deletePDFs,
+  pdfPageSplitKeyboard,
+  getSplitPdf,
 } = require("./pdf");
 process.env.NTBA_FIX_350 = true; // to remove deprecationWarning on bot.sendDocument
 
@@ -75,12 +77,13 @@ bot.on("text", async (msg) => {
     };
   }
   if (text === "Cancel") {
+    replayMsg = "Action cancelled";
+    opts.reply_markup = { remove_keyboard: true };
     let getUserData = getCache(id);
     if (getUserData) {
       deletePDFs(getUserData.files || []);
       deleteCache(id);
-      replayMsg = `${getUserData.action} Action cancelled`;
-      opts.reply_markup = { remove_keyboard: true };
+      replayMsg = `${getUserData.action} ${replayMsg}`;
     }
   }
   if (text === "Remove Last PDF") {
@@ -115,7 +118,7 @@ bot.on("text", async (msg) => {
     const getUserData = getCache(id);
     if (getUserData) {
       deleteCache(id);
-      const { action, files, removedPages, totalPages } = getUserData;
+      const { action, files, removedPages, totalPages, ranges } = getUserData;
       if (action === "/merge") {
         const { success, message } = await getMergePdf(files);
         opts.reply_markup = { remove_keyboard: true };
@@ -150,6 +153,21 @@ bot.on("text", async (msg) => {
           replayMsg = message;
         }
         deletePDFs(files);
+      } else if (action === "/splitpdf") {
+        const { success, message } = await getSplitPdf(files, ranges);
+        opts.reply_markup = { remove_keyboard: true };
+        if (success) {
+          bot.sendMessage(id, "🔄 Processing your PDF files.....");
+          bot.sendChatAction(id, "upload_document");
+          setTimeout(async () => {
+            opts.caption = "Here is your PDF";
+            await bot.sendDocument(id, message, opts);
+            fs.unlinkSync(message);
+          }, 3000);
+        } else {
+          replayMsg = message;
+        }
+        deletePDFs(files);
       }
     }
   }
@@ -157,6 +175,16 @@ bot.on("text", async (msg) => {
     deleteOldDataOnNewCommand(id);
     setCache(id, { action: text });
     replayMsg = `Send me the PDF file that you'll like to remove pages`;
+    opts.reply_markup = {
+      resize_keyboard: true,
+      is_persistent: true,
+      keyboard: [["Cancel"]],
+    };
+  }
+  if (text === "/splitpdf") {
+    deleteOldDataOnNewCommand(id);
+    setCache(id, { action: text });
+    replayMsg = `Send me the PDF file that you'll like to separate pages`;
     opts.reply_markup = {
       resize_keyboard: true,
       is_persistent: true,
@@ -203,6 +231,7 @@ bot.on("document", async (msg) => {
         }
         setCache(id, getUserData);
         text = getListOfUploadPDF(getUserData.files);
+        bot.sendMessage(id, text, opts);
       } else if (action === "/removepages") {
         const totalPages = await getTotalPages(givenName);
         if (totalPages > 1) {
@@ -219,8 +248,31 @@ bot.on("document", async (msg) => {
           deleteCache(id);
           deletePDFs([fileObj]);
         }
+        bot.sendMessage(id, text, opts);
+      } else if (action === "/splitpdf") {
+        const totalPages = await getTotalPages(givenName);
+        if (totalPages === 1) {
+          text = "There is only 1 page /splitpdf action could not perform.";
+          opts.reply_markup = { remove_keyboard: true };
+          deleteCache(id);
+          deletePDFs([fileObj]);
+        } else if (totalPages > 20) {
+          opts.reply_markup = { remove_keyboard: true };
+          text = "For now, @XPDF_BOT only supports up to PDF(s) with 20 pages.";
+        } else {
+          getUserData.files = [fileObj];
+          getUserData.totalPages = totalPages;
+          getUserData.ranges = [];
+          getUserData.fileId = message_id;
+          setCache(id, getUserData);
+          text = getListOfUploadPDF(getUserData.files);
+          text += `\nThere are total ${totalPages} pages in PDF.\n\nNow send me the ranges.`;
+          bot.sendMessage(id, text, { reply_to_message_id: message_id });
+          // opts.reply_to_message_id = new_message_id;
+          opts.reply_markup.keyboard = pdfPageKeyboard(totalPages);
+          bot.sendMessage(id, "Start page:", opts);
+        }
       }
-      bot.sendMessage(id, text, opts);
     } else {
       bot.sendMessage(id, "Invalid File Type!");
     }
@@ -233,7 +285,7 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
     message_id,
   } = msg;
   const getUserData = getCache(id);
-  let { action, totalPages, removedPages } = getUserData;
+  let { action, totalPages, removedPages, ranges, fileId } = getUserData;
   if (action === "/removepages") {
     let removedPagesNumber = match[0];
     removedPages.push(removedPagesNumber.toString());
@@ -249,6 +301,52 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
         keyboard: pdfPageKeyboard(totalPages, removedPages),
       },
     });
+  } else if (action === "/splitpdf") {
+    let pagesNumber = match[0];
+    if (ranges.length) {
+      ranges[0].push(pagesNumber);
+      getUserData.ranges = ranges;
+      setCache(id, getUserData);
+      const text = `New Split PDF\nStart page: *${ranges[0][0]}*\nLast  page: *${ranges[0][1]}*\n\nPress *Done* to split PDF ot *Cancel* to cancel action`;
+      bot.sendMessage(id, text, {
+        reply_to_message_id: fileId,
+        reply_markup: {
+          resize_keyboard: true,
+          is_persistent: true,
+          keyboard: [["Done", "Cancel"]],
+        },
+        parse_mode: "Markdown",
+      });
+    } else if (pagesNumber == totalPages) {
+      ranges.push([pagesNumber]);
+      getUserData.ranges = ranges;
+      setCache(id, getUserData);
+      const text = `New Split PDF\nStart page: *${ranges[0][0]}*\nLast  page: *${ranges[0][1]? ranges[0][1] : ranges[0][0]}*\n\nPress *Done* to split PDF ot *Cancel* to cancel action`;
+      bot.sendMessage(id, text, {
+        reply_to_message_id: fileId,
+        reply_markup: {
+          resize_keyboard: true,
+          is_persistent: true,
+          keyboard: [["Done", "Cancel"]],
+        },
+        parse_mode: "Markdown",
+      });
+    } else {
+      ranges.push([pagesNumber]);
+      getUserData.ranges = ranges;
+      setCache(id, getUserData);
+      const text = "Last page:";
+      bot.sendMessage(id, text, {
+        reply_markup: {
+          resize_keyboard: true,
+          is_persistent: true,
+          keyboard: pdfPageSplitKeyboard(totalPages, pagesNumber),
+        },
+      });
+    }
+    // [...new Set(all)]
+    // .map((n) => Number(n))
+    // .sort((a, b) => a - b);
   } else {
     bot.sendMessage(id, "Invalid Command", {
       reply_markup: { reply_to_message_id: message_id },

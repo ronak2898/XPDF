@@ -66,7 +66,7 @@ bot.on("text", async (msg) => {
   }
   if (text === "/merge") {
     deleteOldDataOnNewCommand(id);
-    setCache(id, { action: text });
+    await setCache(id, { action: text });
     replayMsg =
       "Send me the PDF files that you'll like to merge\n\nNote that the files will be merged in the order that you send me";
     opts.reply_markup = {
@@ -79,28 +79,28 @@ bot.on("text", async (msg) => {
   if (text === "Cancel") {
     replayMsg = "Action cancelled";
     opts.reply_markup = { remove_keyboard: true };
-    let getUserData = getCache(id);
+    let getUserData = await getCache(id);
     if (getUserData) {
       deletePDFs(getUserData.files || []);
-      deleteCache(id);
+      await deleteCache(id);
       replayMsg = `${getUserData.action} ${replayMsg}`;
     }
   }
   if (text === "Remove Last PDF") {
-    let getUserData = getCache(id);
+    let getUserData = await getCache(id);
     if (getUserData) {
       const getFiles = getUserData.files;
       if (getFiles.length === 1) {
         const { givenName } = getFiles.pop();
         fs.unlinkSync(`./pdf/${givenName}`);
-        deleteCache(id);
+        await deleteCache(id);
         replayMsg = "/merge Action cancelled";
         opts.reply_markup = { remove_keyboard: true };
       } else {
         const { givenName, originalName } = getFiles.pop();
         fs.unlinkSync(`./pdf/${givenName}`);
         getUserData["files"] = getFiles;
-        setCache(id, getUserData);
+        await setCache(id, getUserData);
         replayMsg =
           `PDF ${originalName} has been removed for merging\n\n` +
           getListOfUploadPDF(getUserData.files);
@@ -115,9 +115,9 @@ bot.on("text", async (msg) => {
     }
   }
   if (text === "Done") {
-    const getUserData = getCache(id);
+    const getUserData = await getCache(id);
     if (getUserData) {
-      deleteCache(id);
+      await deleteCache(id);
       const { action, files, removedPages, totalPages, ranges } = getUserData;
       if (action === "/merge") {
         const { success, message } = await getMergePdf(files);
@@ -173,7 +173,7 @@ bot.on("text", async (msg) => {
   }
   if (text === "/removepages") {
     deleteOldDataOnNewCommand(id);
-    setCache(id, { action: text });
+    await setCache(id, { action: text });
     replayMsg = `Send me the PDF file that you'll like to remove pages`;
     opts.reply_markup = {
       resize_keyboard: true,
@@ -183,7 +183,7 @@ bot.on("text", async (msg) => {
   }
   if (text === "/splitpdf") {
     deleteOldDataOnNewCommand(id);
-    setCache(id, { action: text });
+    await setCache(id, { action: text });
     replayMsg = `Send me the PDF file that you'll like to separate pages`;
     opts.reply_markup = {
       resize_keyboard: true,
@@ -200,7 +200,7 @@ bot.on("document", async (msg) => {
     document,
     message_id,
   } = msg;
-  const getUserData = getCache(id);
+  const getUserData = await getCache(id);
   if (getUserData) {
     const { mime_type } = document;
     if (mime_type === "application/pdf") {
@@ -229,7 +229,7 @@ bot.on("document", async (msg) => {
         } else {
           getUserData.files = [fileObj];
         }
-        setCache(id, getUserData);
+        await setCache(id, getUserData);
         text = getListOfUploadPDF(getUserData.files);
         bot.sendMessage(id, text, opts);
       } else if (action === "/removepages") {
@@ -238,14 +238,14 @@ bot.on("document", async (msg) => {
           getUserData.files = [fileObj];
           getUserData.totalPages = totalPages;
           getUserData.removedPages = [];
-          setCache(id, getUserData);
+          await setCache(id, getUserData);
           text = getListOfUploadPDF(getUserData.files);
           text += `\n\nThere are total ${totalPages} pages in PDF.\nNow send me the number to remove page.`;
           opts.reply_markup.keyboard = pdfPageKeyboard(totalPages);
         } else {
           text = "There is only 1 page /removepages action could not perform.";
           opts.reply_markup = { remove_keyboard: true };
-          deleteCache(id);
+          await deleteCache(id);
           deletePDFs([fileObj]);
         }
         bot.sendMessage(id, text, opts);
@@ -254,7 +254,7 @@ bot.on("document", async (msg) => {
         if (totalPages === 1) {
           text = "There is only 1 page /splitpdf action could not perform.";
           opts.reply_markup = { remove_keyboard: true };
-          deleteCache(id);
+          await deleteCache(id);
           deletePDFs([fileObj]);
         } else if (totalPages > 20) {
           opts.reply_markup = { remove_keyboard: true };
@@ -264,7 +264,7 @@ bot.on("document", async (msg) => {
           getUserData.totalPages = totalPages;
           getUserData.ranges = [];
           getUserData.fileId = message_id;
-          setCache(id, getUserData);
+          await setCache(id, getUserData);
           text = getListOfUploadPDF(getUserData.files);
           text += `\nThere are total ${totalPages} pages in PDF.\n\nNow send me the ranges.`;
           bot.sendMessage(id, text, { reply_to_message_id: message_id });
@@ -279,19 +279,19 @@ bot.on("document", async (msg) => {
   }
 });
 
-bot.onText(/^[0-9]*$/, (msg, match) => {
+bot.onText(/^[0-9]*$/, async (msg, match) => {
   const {
     chat: { id },
     message_id,
   } = msg;
-  const getUserData = getCache(id);
+  const getUserData = await getCache(id);
   let { action, totalPages, removedPages, ranges, fileId } = getUserData;
   if (action === "/removepages") {
     let removedPagesNumber = match[0];
     removedPages.push(removedPagesNumber.toString());
     removedPages = [...new Set(removedPages)];
     getUserData.removedPages = removedPages;
-    setCache(id, getUserData);
+    await setCache(id, getUserData);
     const text = `Press Done or keep sending number of the page.\n\nRemoved Pages Number : ${removedPages.toString()}`;
     bot.sendMessage(id, text, {
       reply_markup: {
@@ -306,7 +306,7 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
     if (ranges.length) {
       ranges[0].push(pagesNumber);
       getUserData.ranges = ranges;
-      setCache(id, getUserData);
+      await setCache(id, getUserData);
       const text = `New Split PDF\nStart page: *${ranges[0][0]}*\nLast  page: *${ranges[0][1]}*\n\nPress *Done* to split PDF ot *Cancel* to cancel action`;
       bot.sendMessage(id, text, {
         reply_to_message_id: fileId,
@@ -320,8 +320,12 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
     } else if (pagesNumber == totalPages) {
       ranges.push([pagesNumber]);
       getUserData.ranges = ranges;
-      setCache(id, getUserData);
-      const text = `New Split PDF\nStart page: *${ranges[0][0]}*\nLast  page: *${ranges[0][1]? ranges[0][1] : ranges[0][0]}*\n\nPress *Done* to split PDF ot *Cancel* to cancel action`;
+      await setCache(id, getUserData);
+      const text = `New Split PDF\nStart page: *${
+        ranges[0][0]
+      }*\nLast  page: *${
+        ranges[0][1] ? ranges[0][1] : ranges[0][0]
+      }*\n\nPress *Done* to split PDF ot *Cancel* to cancel action`;
       bot.sendMessage(id, text, {
         reply_to_message_id: fileId,
         reply_markup: {
@@ -334,7 +338,7 @@ bot.onText(/^[0-9]*$/, (msg, match) => {
     } else {
       ranges.push([pagesNumber]);
       getUserData.ranges = ranges;
-      setCache(id, getUserData);
+      await setCache(id, getUserData);
       const text = "Last page:";
       bot.sendMessage(id, text, {
         reply_markup: {
@@ -360,5 +364,7 @@ readAllFiles.forEach((file) => {
     fs.unlinkSync(`./pdf/${file}`);
   }
 });
-flushAllCache();
-app.listen(PORT);
+
+app.listen(PORT, async () => {
+  await flushAllCache();
+});

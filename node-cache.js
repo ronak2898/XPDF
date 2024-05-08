@@ -13,7 +13,7 @@ const {
   FieldValue,
   Filter,
 } = require("firebase-admin/firestore");
-const serviceAccount = require("./skynet-7c6ff-03647ada5a7b.json");
+const serviceAccount = require("./skynet-12246-df9a6a776eea.json");
 initializeApp({
   credential: cert(serviceAccount),
 });

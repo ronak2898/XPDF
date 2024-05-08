@@ -260,6 +260,7 @@ bot.on("document", async (msg) => {
         } else if (totalPages > 20) {
           opts.reply_markup = { remove_keyboard: true };
           text = "For now, @XPDF_BOT only supports up to PDF(s) with 20 pages.";
+          bot.sendMessage(id, text, opts);
         } else {
           getUserData.files = [fileObj];
           getUserData.totalPages = totalPages;
